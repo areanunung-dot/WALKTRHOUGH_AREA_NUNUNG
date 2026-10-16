@@ -22,7 +22,7 @@ function renderDrafts(){$('findings').innerHTML=drafts.map((f,i)=>`<div class="f
 function resizeImage(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{const c=document.createElement('canvas'),ratio=Math.min(1,1000/im.width);c.width=Math.round(im.width*ratio);c.height=Math.round(im.height*ratio);c.getContext('2d').drawImage(im,0,0,c.width,c.height);resolve(c.toDataURL('image/jpeg',.68))};im.onerror=reject;im.src=r.result};r.onerror=reject;r.readAsDataURL(file)})}async function readPhoto(input,i){if(input.files[0])try{drafts[i].photo=await resizeImage(input.files[0]);toast('Foto siap')}catch(e){toast('Foto gagal diproses')}}
 async function submitAll(){if(!token)return toast('Silakan login kembali');if(!drafts.length)return toast('Tambahkan minimal satu temuan');if(drafts.some(f=>!f.desc.trim()))return toast('Semua temuan harus memiliki keterangan');const store=$('aStore').value,date=$('aDate').value,area=$('aArea').value.trim();if(!date||!area)return toast('Lengkapi tanggal dan area');if(!confirm(`Simpan ${drafts.length} temuan ke database Team Area Nunung?`))return;try{for(let i=0;i<drafts.length;i++){const f=drafts[i];await api('wtAmFinalize',{token,draft:{store,tanggal:date,area,kategori:f.category,temuan:f.desc,prioritas:f.priority,actionPlan:'',pic:username,dueDate:'',keterangan:area,fotoBefore:f.photo,mimeTypeBefore:'image/jpeg'}})}toast('Walkthrough tersimpan. Setiap temuan dibuat menjadi satu baris.');drafts=[{id:Date.now(),category:'OPERASIONAL',priority:'MEDIUM',desc:'',photo:''}];renderDrafts();await loadAdminHistory()}catch(e){toast('Proses terhenti: '+e.message+'; periksa History sebelum mengirim ulang agar tidak duplikat')}}
 function normalize(x){return {'ID TEMUAN':x.ID||x['ID']||'',STORE:x.STORE||'',AREA:x.AREA||'',KATEGORI:x.KATEGORI||'',PRIORITAS:x.PRIORITAS||'',STATUS:x.STATUS||'OPEN','TANGGAL WALKTHROUGH':x.TANGGAL||x['TANGGAL']||'', 'KETERANGAN TEMUAN':x.TEMUAN||x['TEMUAN']||'', 'URL FOTO BEFORE':x['FOTO BEFORE']||'', 'TINDAKAN STORE':x.TINDAKAN||'', 'URL FOTO AFTER':x['FOTO AFTER']||'', 'TANGGAL FOLLOW UP':x['TANGGAL PROGRESS']||'',KETERANGAN:x.KETERANGAN||''}}
-function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}function imgUrl(u){const m=String(u||'').match(/[-\w]{25,}/);return m?'https://drive.google.com/thumbnail?id='+m[0]+'&sz=w1000':u}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}function imgUrl(u){if(String(u||'').startsWith('data:image/'))return u;const m=String(u||'').match(/[-\w]{25,}/);return m?'https://drive.google.com/thumbnail?id='+m[0]+'&sz=w1000':u}
 async function recent(store=''){const r=await api('wtAmRecent',{store,limit:5000});return (r.data||[]).map(normalize)}
 function renderRows(rows,target,publicMode){if(!rows.length){$(target).innerHTML='<div class="notice">Belum ada temuan untuk ditampilkan.</div>';return}$(target).innerHTML=rows.map((x,i)=>`<div class="finding"><h3>${esc(x.STORE)} • ${esc(x['ID TEMUAN'])}</h3><div class="muted">${esc(x['TANGGAL WALKTHROUGH'])} • ${esc(x.AREA)} • ${esc(x.KATEGORI)}</div><p><b>Prioritas:</b> ${esc(x.PRIORITAS)} &nbsp; <b>Status:</b> ${esc(x.STATUS)}</p><p style="white-space:pre-wrap">${esc(x['KETERANGAN TEMUAN'])}</p>${x['URL FOTO BEFORE']?`<img class="photo" src="${imgUrl(x['URL FOTO BEFORE'])}" alt="Foto before">`:''}${publicMode&& !['COMPLETED','CLOSED'].includes(String(x.STATUS).toUpperCase())?`<label>Tindakan Perbaikan</label><textarea id="act${i}" placeholder="Tuliskan tindakan yang sudah dilakukan"></textarea><label>Foto Progress (opsional)</label><div class="actions"><button type="button" class="btn light" onclick="$('pfg${i}').click()">Pilih dari Galeri / File</button><button type="button" class="btn light" onclick="$('pfc${i}').click()">Ambil Foto dari Kamera</button></div><input id="pfg${i}" class="filepick" type="file" accept="image/*"><input id="pfc${i}" class="filepick" type="file" accept="image/*" capture="environment"><div class="actions"><button class="btn green" onclick="sendFollow('${esc(x['ID TEMUAN'])}',${i})">Kirim Follow Up</button></div>`:`<p><b>Tindakan:</b> ${esc(x['TINDAKAN STORE']||'-')}</p>`}</div>`).join('')}
 async function loadAdminHistory(){try{const rows=await recent();adminRows=rows;renderRows(rows,'adminHistory',false)}catch(e){$('adminHistory').innerHTML='<div class="notice">'+esc(e.message)+'</div>'}}
@@ -30,8 +30,48 @@ async function loadStoreHistory(){const target='storeHistory';if(!$(target))retu
 function reportRows(mode){return mode==='store'?storeRows:adminRows}
 function reportHtml(rows){const escHtml=s=>esc(s).replace(/\n/g,'<br>');return `<!doctype html><html><head><meta charset="utf-8"><style>
 @page{size:A4 portrait;margin:14mm 13mm 16mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#172033;font-size:10pt;margin:0}h1{font-size:18pt;margin:0 0 4mm}h2{font-size:12pt;margin:0 0 2mm}p{margin:2mm 0;line-height:1.35}.meta{color:#475569;font-size:9pt}.item{border:1px solid #cbd5e1;border-radius:4mm;padding:4mm;margin:0 0 5mm;page-break-inside:avoid;break-inside:avoid}.label{font-weight:bold}.photoBox{margin-top:3mm;page-break-inside:avoid;break-inside:avoid}.photo{display:block;width:auto;max-width:160mm;max-height:90mm;height:auto;object-fit:contain;margin:2mm auto;border:1px solid #e2e8f0}.photoCaption{text-align:center;color:#64748b;font-size:8pt}.rule{border:0;border-top:1px solid #cbd5e1;margin:4mm 0}table{width:100%;border-collapse:collapse}td{vertical-align:top;padding:1mm 0}
-</style></head><body><h1>WT AM Area Nunung</h1><p class="meta">Laporan Walkthrough • Dicetak: ${new Date().toLocaleString('id-ID')}</p><hr class="rule">${rows.map((x,i)=>`<section class="item"><h2>Temuan ${i+1}: ${escHtml(x.STORE)} — ${escHtml(x['ID TEMUAN'])}</h2><p class="meta">Tanggal: ${escHtml(x['TANGGAL WALKTHROUGH'])} | Area: ${escHtml(x.AREA)} | Kategori: ${escHtml(x.KATEGORI)}</p><p><span class="label">Prioritas:</span> ${escHtml(x.PRIORITAS)} &nbsp; <span class="label">Status:</span> ${escHtml(x.STATUS)}</p><p><span class="label">Temuan:</span><br>${escHtml(x['KETERANGAN TEMUAN'])}</p>${x['URL FOTO BEFORE']?`<div class="photoBox"><div class="photoCaption">FOTO BEFORE</div><img class="photo" src="${esc(imgUrl(x['URL FOTO BEFORE']))}" alt="Foto before"><p class="photoCaption">Jika foto tidak tampil pada Word, buka URL foto yang tercantum pada database.</p></div>`:''}<p><span class="label">Tindakan Store:</span><br>${escHtml(x['TINDAKAN STORE']||'-')}</p>${x['URL FOTO AFTER']?`<div class="photoBox"><div class="photoCaption">FOTO AFTER</div><img class="photo" src="${esc(imgUrl(x['URL FOTO AFTER']))}" alt="Foto after"></div>`:''}<p><span class="label">Tanggal Follow Up:</span> ${escHtml(x['TANGGAL FOLLOW UP']||'-')}</p><p><span class="label">Keterangan:</span><br>${escHtml(x.KETERANGAN||'-')}</p></section>`).join('')}</body></html>`}
-function exportReport(mode,type){const rows=reportRows(mode);if(!rows||!rows.length){toast('Belum ada data untuk diekspor');return}const html=reportHtml(rows);const stamp=new Date().toISOString().slice(0,10);if(type==='word'){const blob=new Blob(['\ufeff',html],{type:'application/msword;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`WT_AM_Area_Nunung_${mode}_${stamp}.doc`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);toast('File Word diunduh. Periksa foto setelah dibuka di Word.')}else{const w=window.open('','_blank');if(!w){toast('Izinkan pop-up untuk membuat PDF');return}w.document.open();w.document.write(html.replace('</body>','<script>window.onload=function(){setTimeout(function(){window.print()},500)};<\/script></body>'));w.document.close();toast('Pada dialog cetak, pilih Save as PDF. Ukuran kertas A4.')}}
+</style></head><body><h1>WT AM Area Nunung</h1><p class="meta">Laporan Walkthrough • Dicetak: ${new Date().toLocaleString('id-ID')}</p><hr class="rule">${rows.map((x,i)=>`<section class="item"><h2>Temuan ${i+1}: ${escHtml(x.STORE)} — ${escHtml(x['ID TEMUAN'])}</h2><p class="meta">Tanggal: ${escHtml(x['TANGGAL WALKTHROUGH'])} | Area: ${escHtml(x.AREA)} | Kategori: ${escHtml(x.KATEGORI)}</p><p><span class="label">Prioritas:</span> ${escHtml(x.PRIORITAS)} &nbsp; <span class="label">Status:</span> ${escHtml(x.STATUS)}</p><p><span class="label">Temuan:</span><br>${escHtml(x['KETERANGAN TEMUAN'])}</p>${x['URL FOTO BEFORE']?`<div class="photoBox"><div class="photoCaption">FOTO BEFORE</div><img class="photo" src="${esc(x.__beforeData||imgUrl(x['URL FOTO BEFORE']))}" alt="Foto before"><p class="photoCaption">Jika foto tidak tampil pada Word, buka URL foto yang tercantum pada database.</p></div>`:''}<p><span class="label">Tindakan Store:</span><br>${escHtml(x['TINDAKAN STORE']||'-')}</p>${x['URL FOTO AFTER']?`<div class="photoBox"><div class="photoCaption">FOTO AFTER</div><img class="photo" src="${esc(x.__afterData||imgUrl(x['URL FOTO AFTER']))}" alt="Foto after"></div>`:''}<p><span class="label">Tanggal Follow Up:</span> ${escHtml(x['TANGGAL FOLLOW UP']||'-')}</p><p><span class="label">Keterangan:</span><br>${escHtml(x.KETERANGAN||'-')}</p></section>`).join('')}</body></html>`}
+async function exportReport(mode,type){
+ const sourceRows=reportRows(mode);
+ if(!sourceRows||!sourceRows.length){toast('Belum ada data untuk diekspor');return}
+ const stamp=new Date().toISOString().slice(0,10);
+ if(type==='word'){
+   toast('Menyiapkan foto untuk dokumen Word…');
+   const rows=[];
+   for(const original of sourceRows){
+     const x={...original};
+     for(const [urlKey,dataKey] of [['URL FOTO BEFORE','__beforeData'],['URL FOTO AFTER','__afterData']]){
+       const photoUrl=x[urlKey];
+       if(!photoUrl)continue;
+       try{
+         const image=await api('wtAmGetPhotoBase64',{url:photoUrl});
+         if(image&&image.base64){
+           x[dataKey]=`data:${image.mimeType||'image/jpeg'};base64,${image.base64}`;
+         }
+       }catch(err){
+         console.warn('Foto tidak dapat ditanam ke Word:',photoUrl,err);
+       }
+     }
+     rows.push(x);
+   }
+   const wordHtml=reportHtml(rows);
+   const blob=new Blob(['\\ufeff',wordHtml],{type:'application/msword;charset=utf-8'});
+   const url=URL.createObjectURL(blob);
+   const a=document.createElement('a');a.href=url;
+   a.download=`WT_AM_Area_Nunung_${mode}_${stamp}.doc`;
+   document.body.appendChild(a);a.click();a.remove();
+   setTimeout(()=>URL.revokeObjectURL(url),5000);
+   toast('Word diunduh dengan foto tertanam jika berhasil dibaca dari Drive. Buka dan periksa hasilnya.');
+ }else{
+   const report=reportHtml(sourceRows);
+   const w=window.open('','_blank');
+   if(!w){toast('Izinkan pop-up untuk membuat PDF');return}
+   w.document.open();
+   w.document.write(report.replace('</body>','<script>window.onload=function(){setTimeout(function(){window.print()},500)};<\\/script></body>'));
+   w.document.close();
+   toast('Pada dialog cetak, pilih Save as PDF. Ukuran kertas A4.');
+ }
+}
 async function sendFollow(id,i){const tindakan=$('act'+i).value.trim();if(!tindakan)return toast('Isi tindakan perbaikan');try{let fotoProgress='',file=$('pfg'+i).files[0]||$('pfc'+i).files[0];if(file)fotoProgress=await resizeImage(file);const r=await api('wtAmPublicFollowup',{id,tindakan,status:'ON PROGRESS',fotoProgress,mimeTypeProgress:'image/jpeg',keterangan:'Follow up dikirim melalui portal store'});toast(r.message||'Follow up terkirim');await loadStoreHistory()}catch(e){toast(e.message)}}
 init();show('home');
 </script></body></html>
